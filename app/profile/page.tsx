@@ -61,7 +61,7 @@ const PROFILE_FIELDS: Array<{
 }> = [
   { key: "workspace_email", label: "Workspace email", hint: "Fixed — used to match your registration" },
   { key: "zedu_id", label: "Zedu ID", hint: "Fixed — your unique Zedu identifier" },
-  { key: "sub_team", label: "Sub-team", hint: "Assigned later by the team" },
+  { key: "sub_team", label: "Sub-team", hint: "Assigned by your team lead" },
   { key: "full_name", label: "Full name", changeable: true },
   { key: "github_url", label: "GitHub URL", changeable: true },
   { key: "telegram_handle", label: "Telegram display name", changeable: true },
@@ -139,9 +139,16 @@ export default function ProfilePage() {
       const sb = supabaseBrowser();
       const { data } = await sb.auth.getUser();
       if (!data.user) { router.replace("/login"); return; }
-      const { data: prof } = await sb.from("users").select("*").eq("id", data.user.id).maybeSingle();
+      const { data: prof } = await sb
+        .from("users")
+        .select("*, sub_teams(name)")
+        .eq("id", data.user.id)
+        .maybeSingle();
       if (!prof) { router.replace("/onboarding"); return; }
-      setProfile(prof as Profile);
+      // users.sub_team text was replaced by sub_team_id in 013 — surface the
+      // joined team name under the same key for the profile cards.
+      const team = (prof.sub_teams as Array<{ name: string }> | null)?.[0]?.name ?? null;
+      setProfile({ ...(prof as Profile), sub_team: team });
       await loadOrgs();
       await loadScoped(prof.active_org_id || "");
       await loadRequests();
