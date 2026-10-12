@@ -149,7 +149,7 @@ const ContributorsPage = () => {
   return (
     <section className="relative isolate flex w-full flex-col items-center gap-4 overflow-hidden px-4 py-10 text-center sm:gap-6 sm:px-8 sm:py-16 lg:gap-8 lg:px-12">
       <h1 className="text-2xl font-semibold leading-tight text-neutral-900 sm:text-4xl md:text-5xl text-center">
-        Zedu <span className="text-primary-500">Egret</span> Contributors
+        Zedu <span className="text-primary-500">Egret</span> Collaborators
       </h1>
       <p className="max-w-[95%] text-xs text-neutral-600 sm:max-w-[90%] sm:text-base md:max-w-[65%] lg:max-w-[45%] lg:text-lg">
         Contributors who have actively participated and contributed to Zedu chat

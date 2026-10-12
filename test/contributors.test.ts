@@ -100,6 +100,10 @@ test("renderPageTsx is a main-site themed page with repo links and no extra deps
   const out = renderPageTsx();
   assert.match(out, /export const metadata: Metadata/);
   assert.match(out, /canonical: "\/contributors\/egrets"/);
+  assert.match(
+    out,
+    /Zedu <span className="text-primary-500">Egret<\/span> Collaborators/
+  );
   assert.match(out, /const ContributorsPage = \(\) => \{/);
   assert.match(out, /export default ContributorsPage;/);
   assert.match(out, /from "\.\/index"/);
