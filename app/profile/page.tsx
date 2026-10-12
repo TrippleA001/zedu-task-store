@@ -197,6 +197,9 @@ export default function ProfilePage() {
       const j = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(j.error || `Request failed (${r.status})`);
       setProfile((p) => (p ? { ...p, active_org_id: orgId } : p));
+      // Let the announcement bar (and anything else scoped) refetch for the
+      // newly selected org without a full page reload.
+      window.dispatchEvent(new Event("zedu:org-switched"));
       await loadScoped(orgId);
     } catch (e: any) {
       setOrgErr(e.message);

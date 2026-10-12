@@ -94,6 +94,10 @@ export default async function AdminPage() {
   const memberIds = await orgMemberIds(svc, viewingOrgId);
   const scope = memberIds.length > 0 ? memberIds : [NIL_UUID];
 
+  // The members panel lists every user so org membership can be toggled both
+  // ways (e.g. adding a Team Egret member to Team Neo); team assignment
+  // stays limited to viewing-org members by the API.
+
   const [{ data: orgRows }, { data: products }, { data: submissions }, { data: requests }, { data: members }, { data: teams }, { data: memOrgs }] = await Promise.all([
     isSuper
       ? svc.from("organizations").select("id, name, banner_text").order("name")
@@ -114,11 +118,10 @@ export default async function AdminPage() {
     svc
       .from("users")
       .select("id, full_name, auth_email, workspace_email, sub_team_id, sub_teams(name)")
-      .in("id", scope)
       .order("full_name")
-      .limit(500),
+      .limit(1000),
     svc.from("sub_teams").select("id, name").eq("org_id", viewingOrgId),
-    svc.from("user_orgs").select("user_id, org_id").in("user_id", scope),
+    svc.from("user_orgs").select("user_id, org_id"),
   ]);
 
   const orgs = (orgRows || []).map((o: { id: string; name: string; banner_text?: string | null }) => ({ id: o.id, name: o.name, banner_text: o.banner_text ?? null }));
