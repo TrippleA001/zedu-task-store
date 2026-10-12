@@ -78,7 +78,6 @@ export async function POST(request: Request) {
       full_name,
       github_url,
       telegram_handle: telegram,
-      sub_team: null, // greyed out — auto-assigned later
       skill_rating,
       channels_verified: true,
       active_org_id: orgId,

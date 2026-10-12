@@ -99,14 +99,6 @@ export function isChangeableField(f: string): f is ChangeableField {
   return (CHANGEABLE_FIELDS as readonly string[]).includes(f);
 }
 
-// Sub-team names are admin-assigned free text (onboarding leaves the column
-// null). Empty string clears the assignment; the column is VARCHAR(100).
-export function subTeamError(raw: string): string | null {
-  const v = sanitizeText(raw, 200);
-  if (v.length > 100) return "Sub-team name must be at most 100 characters";
-  return null;
-}
-
 // Column on public.users each changeable field maps to. Shared by the
 // change-request POST (snapshot) and the admin approve route (apply).
 export const CHANGE_FIELD_COLUMN: Record<ChangeableField, string> = {

@@ -1,22 +1,21 @@
 import { NextResponse } from "next/server";
-import { authUser, isAdminUser, serviceClient } from "@/lib/api-auth";
+import { adminContext } from "@/lib/admin-org";
+import { serviceClient } from "@/lib/api-auth";
 
-// GET /api/admin/submissions — every verified submission with member
-// identity, newest first. Read-only console data (service role bypasses the
+// GET /api/admin/submissions — verified submissions inside the viewing org,
+// newest first. Read-only console data (service role bypasses the
 // owner-only submissions RLS policy).
 export async function GET(request: Request) {
+  const ac = await adminContext(request);
+  if (!ac.ok) return ac.denied;
   try {
-    const user = await authUser(request);
-    if (!user) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
-    if (!(await isAdminUser(user.id)))
-      return NextResponse.json({ error: "Admin access required" }, { status: 403 });
-
     const svc = serviceClient();
     const { data, error } = await svc
       .from("submissions")
       .select(
         "id, user_id, stage_number, todo_app_url, task_repo_url, values, verified_at, users(full_name, auth_email, workspace_email)"
       )
+      .eq("org_id", ac.ctx.orgId)
       .order("verified_at", { ascending: false })
       .limit(500);
     if (error) throw error;

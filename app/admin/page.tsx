@@ -1,12 +1,19 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { authUser, isAdminUser, serviceClient } from "@/lib/api-auth";
+import { orgMemberIds, resolveViewingOrg } from "@/lib/admin-org";
 import RequestQueue, { type AdminRequest } from "@/app/components/admin/request-queue";
 import MemberTeams, { type AdminMember } from "@/app/components/admin/member-teams";
 import ProductManager, { type AdminProduct, type SchemaDef } from "@/app/components/admin/product-manager";
+import OrgSwitcher from "@/app/components/admin/org-switcher";
+import BannerEditor from "@/app/components/admin/banner-editor";
 import { btnPrimary } from "@/app/components/ui";
 
 export const dynamic = "force-dynamic";
+
+// .in() filters on user id lists; when the viewing org has no members yet an
+// impossible uuid keeps the queries valid while still matching nothing.
+const NIL_UUID = "00000000-0000-0000-0000-000000000000";
 
 type SubmissionRow = {
   id: string;
@@ -35,7 +42,8 @@ type MemberRow = {
   full_name: string;
   auth_email: string;
   workspace_email: string | null;
-  sub_team: string | null;
+  sub_team_id: string | null;
+  sub_teams: { name: string } | Array<{ name: string }> | null;
 };
 
 function joinUser<T>(u: T | T[] | null): T | null {
@@ -67,24 +75,63 @@ export default async function AdminPage() {
   }
 
   const svc = serviceClient();
-  const [{ data: products }, { data: submissions }, { data: requests }, { data: members }] = await Promise.all([
-    svc.from("products").select("*").order("stage_number"),
+
+  // Viewing org: scoped admins (admin_org_id set) are pinned to their org;
+  // super admins follow the admin_org cookie, falling back to active, then
+  // the default org.
+  const { data: adminRow } = await svc
+    .from("users")
+    .select("admin_org_id, active_org_id")
+    .eq("id", user.id)
+    .maybeSingle();
+  const isSuper = adminRow?.admin_org_id == null;
+  const viewingOrgId = await resolveViewingOrg(svc, {
+    isSuper,
+    adminOrgId: adminRow?.admin_org_id ?? null,
+    activeOrgId: adminRow?.active_org_id ?? null,
+  });
+
+  const memberIds = await orgMemberIds(svc, viewingOrgId);
+  const scope = memberIds.length > 0 ? memberIds : [NIL_UUID];
+
+  const [{ data: orgRows }, { data: products }, { data: submissions }, { data: requests }, { data: members }, { data: teams }, { data: memOrgs }] = await Promise.all([
+    isSuper
+      ? svc.from("organizations").select("id, name, banner_text").order("name")
+      : svc.from("organizations").select("id, name, banner_text").eq("id", viewingOrgId),
+    svc.from("products").select("*").eq("org_id", viewingOrgId).order("stage_number"),
     svc
       .from("submissions")
       .select("id, stage_number, todo_app_url, task_repo_url, values, verified_at, users(full_name, auth_email, workspace_email)")
+      .eq("org_id", viewingOrgId)
       .order("verified_at", { ascending: false })
       .limit(300),
     svc
       .from("change_requests")
       .select("id, field, old_value, new_value, note, status, created_at, decided_at, users(full_name)")
+      .in("user_id", scope)
       .order("created_at", { ascending: false })
       .limit(100),
     svc
       .from("users")
-      .select("id, full_name, auth_email, workspace_email, sub_team")
+      .select("id, full_name, auth_email, workspace_email, sub_team_id, sub_teams(name)")
+      .in("id", scope)
       .order("full_name")
       .limit(500),
+    svc.from("sub_teams").select("id, name").eq("org_id", viewingOrgId),
+    svc.from("user_orgs").select("user_id, org_id").in("user_id", scope),
   ]);
+
+  const orgs = (orgRows || []).map((o: { id: string; name: string; banner_text?: string | null }) => ({ id: o.id, name: o.name, banner_text: o.banner_text ?? null }));
+  const orgName = orgs.find((o) => o.id === viewingOrgId)?.name || "this org";
+  const orgBanner = orgs.find((o) => o.id === viewingOrgId)?.banner_text || "";
+
+  const memberOrgIds = new Map<string, string[]>();
+  for (const r of memOrgs || []) {
+    const row = r as { user_id: string; org_id: string };
+    const list = memberOrgIds.get(row.user_id) || [];
+    list.push(row.org_id);
+    memberOrgIds.set(row.user_id, list);
+  }
 
   const adminProducts: AdminProduct[] = (products || []).map((p: Record<string, any>) => ({
     id: p.id,
@@ -120,8 +167,11 @@ export default async function AdminPage() {
     full_name: m.full_name || "Unknown member",
     auth_email: m.auth_email,
     workspace_email: m.workspace_email,
-    sub_team: m.sub_team,
+    team_id: m.sub_team_id ?? null,
+    team_name: joinUser(m.sub_teams)?.name ?? null,
+    org_ids: memberOrgIds.get(m.id) || [],
   }));
+  const adminTeams = (teams || []).map((t: { id: string; name: string }) => ({ id: t.id, name: t.name }));
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6 sm:py-10">
@@ -135,9 +185,20 @@ export default async function AdminPage() {
         </p>
       </div>
 
+      <div className="sticky top-[72px] z-30 mt-4 border-b border-line bg-canvas/95 py-2.5 backdrop-blur">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="text-[13px] text-muted">
+            Viewing: <span className="font-semibold text-ink">{orgName}</span>
+            {!isSuper && <span className="text-muted"> · your assigned org</span>}
+          </p>
+          {isSuper && orgs.length > 1 && <OrgSwitcher orgs={orgs} current={viewingOrgId} />}
+        </div>
+      </div>
+
       <div className="mt-8 space-y-12">
+        <BannerEditor initial={orgBanner} />
         <RequestQueue requests={adminRequests} />
-        <MemberTeams members={adminMembers} />
+        <MemberTeams members={adminMembers} teams={adminTeams} viewingOrgId={viewingOrgId} viewerId={user.id} />
         <ProductManager products={adminProducts} />
 
         <section aria-label="All submissions">

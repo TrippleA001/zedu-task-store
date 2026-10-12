@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { parseGithubRepo, parseGithubPr, parseDriveUrl, isBlockedHost, isHttpsUrl, generateOrderNumber, normalizeEmail, normalizeTelegram, telegramError, CHANGEABLE_FIELDS, isChangeableField, changeValueError, submissionSchemaError, subTeamError } from "../lib/validation";
+import { parseGithubRepo, parseGithubPr, parseDriveUrl, isBlockedHost, isHttpsUrl, generateOrderNumber, normalizeEmail, normalizeTelegram, telegramError, CHANGEABLE_FIELDS, isChangeableField, changeValueError, submissionSchemaError } from "../lib/validation";
 
 test("parseGithubRepo accepts full URL and short form", () => {
   assert.deepEqual(parseGithubRepo("https://github.com/octocat/hello-world"), { owner: "octocat", repo: "hello-world" });
@@ -71,14 +71,6 @@ test("changeValueError per field", () => {
   assert.equal(changeValueError("skill_rating", "4"), null);
   assert.equal(changeValueError("skill_rating", "9"), "Skill rating must be 1-5");
   assert.equal(changeValueError("skill_rating", ""), "New value is required");
-});
-
-test("subTeamError accepts free text, caps length", () => {
-  assert.equal(subTeamError(""), null);
-  assert.equal(subTeamError("Frontend"), null);
-  assert.equal(subTeamError("Data & Platform Engineering"), null);
-  assert.equal(subTeamError("x".repeat(101)), "Sub-team name must be at most 100 characters");
-  assert.equal(subTeamError("x".repeat(100)), null);
 });
 
 test("submissionSchemaError accepts valid schemas", () => {
