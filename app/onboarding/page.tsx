@@ -78,7 +78,7 @@ export default function OnboardingPage() {
     try {
       const r = await fetch("/api/onboarding/verify", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ workspace_email: workspaceEmail, zedu_id: zeduId }),
+        body: JSON.stringify({ workspace_email: workspaceEmail, zedu_id: zeduId, org_id: orgId }),
       });
       const j = await r.json();
       if (!r.ok) throw new Error(j.error || "Verification failed");
@@ -180,6 +180,7 @@ export default function OnboardingPage() {
           prefill={prefill}
           workspaceEmail={workspaceEmail}
           zeduId={zeduId}
+          orgId={orgId}
           onBack={() => setStep(1)}
         />
       )}
