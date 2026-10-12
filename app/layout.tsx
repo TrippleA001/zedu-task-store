@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import "./globals.css";
 import SiteHeader from "./components/site-header";
+import AnnouncementBar from "./components/announcement-bar";
 
 export const metadata: Metadata = {
   title: "Zedu Store",
@@ -12,15 +13,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en">
       <body className="min-h-screen bg-white font-sans text-ink">
-        <div className="bg-brand-deep">
-          <div className="mx-auto flex max-w-6xl flex-col items-center justify-center gap-1 px-4 py-2 text-center text-[13px] font-medium text-white sm:flex-row sm:justify-between sm:px-6">
-            <p>Stage 1 verification is open — complete your ToDo milestone to claim your receipt.</p>
-            <nav className="flex items-center gap-4 text-white/80" aria-label="Announcement">
-              <Link href="/contributors" className="text-white/80 hover:text-white hover:no-underline">Contributors</Link>
-              <Link href="/onboarding" className="text-white/80 hover:text-white hover:no-underline">Get started</Link>
-            </nav>
-          </div>
-        </div>
+        <AnnouncementBar />
         <SiteHeader />
         <main>{children}</main>
         <footer className="mt-16 border-t border-line bg-canvas">
