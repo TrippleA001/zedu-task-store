@@ -2,10 +2,17 @@ import fs from "node:fs";
 import path from "node:path";
 import { config as dotenv } from "dotenv";
 
-// Import roster CSV with headers:
+// Import roster CSV with headers (Egret and Neo rosters both parse — extra
+// columns like Telegram / skill are ignored, onboarding collects those):
 // Full name, Email, Zedu username (ID), Email used to join the Zedu workspace, Github url
-// Usage: tsx scripts/import-roster.ts ./roster.csv  (reads .env.local automatically)
+// Usage: tsx scripts/import-roster.ts ./roster.csv [--org zedu-neo]
+// Rows are stamped with the target org (default zedu-egret) so onboarding
+// claims land each member in the right org (010+ tenancy).
 import { createClient } from "@supabase/supabase-js";
+
+// Mirrors DEFAULT_ORG_SLUG in lib/org.ts (not imported: that module is
+// server-only). Keep the two in sync.
+const DEFAULT_ORG_SLUG = "zedu-egret";
 
 function parseCsv(text: string): string[][] {
   const rows: string[][] = [];
@@ -32,6 +39,8 @@ async function main() {
   dotenv({ path: ".env.local" });
   dotenv(); // also allow plain .env
   const file = process.argv[2] || "./roster.csv";
+  const orgFlag = process.argv.indexOf("--org");
+  const orgSlug = orgFlag >= 0 ? process.argv[orgFlag + 1] : DEFAULT_ORG_SLUG;
   const text = fs.readFileSync(path.resolve(file), "utf8");
   const rows = parseCsv(text);
   const header = rows[0].map((h) => h.trim().toLowerCase());
@@ -45,6 +54,15 @@ async function main() {
   if (idx.email < 0 || idx.zid < 0) throw new Error("CSV must include Email and Zedu username (ID) columns");
 
   const sb = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL! || process.env.SUPABASE_URL!, (process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY)!);
+
+  const { data: org, error: orgErr } = await sb
+    .from("organizations")
+    .select("id")
+    .eq("slug", orgSlug)
+    .maybeSingle();
+  if (orgErr) throw orgErr;
+  if (!org) throw new Error(`Org "${orgSlug}" not found — run migration 013 (seeds zedu-neo) or create the org first.`);
+
   let ok = 0, skipped = 0;
   for (let i = 1; i < rows.length; i++) {
     const r = rows[i];
@@ -57,11 +75,12 @@ async function main() {
       zedu_id,
       workspace_join_email: idx.workspace >= 0 ? (r[idx.workspace] || "").trim() || null : null,
       github_url: idx.github >= 0 ? (r[idx.github] || "").trim() || null : null,
+      org_id: org.id,
     }, { onConflict: "email" });
     if (error) { console.error(`row ${i}: ${error.message}`); skipped++; }
     else ok++;
   }
-  console.log(`Roster import done: ${ok} upserted, ${skipped} skipped`);
+  console.log(`Roster import done (${orgSlug}): ${ok} upserted, ${skipped} skipped`);
 }
 
 main().catch((e) => { console.error(e); process.exit(1); });
