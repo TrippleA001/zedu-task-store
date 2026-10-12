@@ -2,9 +2,12 @@ import fs from "node:fs";
 import path from "node:path";
 import { config as dotenv } from "dotenv";
 
-// Import roster CSV with headers (Egret and Neo rosters both parse — extra
-// columns like Telegram / skill are ignored, onboarding collects those):
-// Full name, Email, Zedu username (ID), Email used to join the Zedu workspace, Github url
+// Import roster CSV with headers (Egret and Neo rosters both parse; extra
+// columns are ignored). Maps Telegram + Technical Skill into the roster
+// profile columns (014) so those members onboard via the confirm screen
+// instead of the wizard:
+// Full name, Email, Zedu username (ID), Email used to join the Zedu workspace,
+// Telegram User name, Github url, Technical Skill (Pre AI era)
 // Usage: tsx scripts/import-roster.ts ./roster.csv [--org zedu-neo]
 // Rows are stamped with the target org (default zedu-egret) so onboarding
 // claims land each member in the right org (010+ tenancy).
@@ -50,6 +53,8 @@ async function main() {
     zid: header.findIndex((h) => h.includes("zedu")),
     workspace: header.findIndex((h) => h.includes("workspace")),
     github: header.findIndex((h) => h.includes("github")),
+    telegram: header.findIndex((h) => h.includes("telegram")),
+    skill: header.findIndex((h) => h.includes("skill")),
   };
   if (idx.email < 0 || idx.zid < 0) throw new Error("CSV must include Email and Zedu username (ID) columns");
 
@@ -75,6 +80,8 @@ async function main() {
       zedu_id,
       workspace_join_email: idx.workspace >= 0 ? (r[idx.workspace] || "").trim() || null : null,
       github_url: idx.github >= 0 ? (r[idx.github] || "").trim() || null : null,
+      telegram_handle: idx.telegram >= 0 ? (r[idx.telegram] || "").trim() || null : null,
+      skill_label: idx.skill >= 0 ? (r[idx.skill] || "").trim() || null : null,
       org_id: org.id,
     }, { onConflict: "email" });
     if (error) { console.error(`row ${i}: ${error.message}`); skipped++; }

@@ -58,6 +58,7 @@ Run in order in the Supabase SQL Editor:
 11. `supabase/migrations/011_task_policy.sql` — per-task policy: `products.prereq_stages` (range/list syntax, empty = previous stage) + `products.attempts_policy` (`single` | `multiple`); submissions gain `attempt_number` + `is_current` with one-current-attempt-per-task enforced by partial unique index (replaces the per-org unique user/stage rule)
 12. `supabase/migrations/012_org_rename.sql` — the default org (`Zedu Egret`) now displays as `Team Egret` in the onboarding dropdown and profile switcher (slug `zedu-egret` unchanged — internal only)
 13. `supabase/migrations/013_org_teams_banner.sql` — tenancy completion: canonical per-org `sub_teams` (replaces free-text `users.sub_team`), `users.admin_org_id` (NULL = super admin), `organizations.banner_text` (per-org announcement bar), seeds the `Team Neo` org (`zedu-neo`), and makes org rows world-readable so logged-out visitors see the banner
+14. `supabase/migrations/014_roster_profile.sql` — roster rows carry the profile details collected at registration (`telegram_handle`, `skill_label`) so imported members can confirm their profile on first login instead of retyping it; the onboarding wizard remains the fallback for rows without them
 
 ## Opening a task later
 
