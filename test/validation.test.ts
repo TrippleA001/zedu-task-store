@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { parseGithubRepo, parseGithubPr, parseDriveUrl, isBlockedHost, isHttpsUrl, generateOrderNumber, normalizeEmail, normalizeTelegram, telegramError, CHANGEABLE_FIELDS, isChangeableField, changeValueError, submissionSchemaError } from "../lib/validation";
+import { parseGithubRepo, parseGithubPr, parseDriveUrl, isBlockedHost, isHttpsUrl, generateOrderNumber, normalizeEmail, normalizeTelegram, telegramError, skillLabelToRating, CHANGEABLE_FIELDS, isChangeableField, changeValueError, submissionSchemaError } from "../lib/validation";
 
 test("parseGithubRepo accepts full URL and short form", () => {
   assert.deepEqual(parseGithubRepo("https://github.com/octocat/hello-world"), { owner: "octocat", repo: "hello-world" });
@@ -49,6 +49,20 @@ test("telegram: display names accepted (spaces allowed)", () => {
   assert.equal(normalizeTelegram("  A   Data   Scientist  "), "A Data Scientist");
   assert.ok((telegramError("") || "").includes("display name"));
   assert.ok((telegramError("A") || "").includes("too short"));
+});
+
+test("skillLabelToRating maps roster labels to 1-5", () => {
+  assert.equal(skillLabelToRating("Beginner"), 1);
+  assert.equal(skillLabelToRating("Advanced Beginner"), 2);
+  assert.equal(skillLabelToRating("advanced_beginner"), 2);
+  assert.equal(skillLabelToRating("Intermediate"), 3);
+  assert.equal(skillLabelToRating("Mid-level"), 3);
+  assert.equal(skillLabelToRating("Advanced"), 4);
+  assert.equal(skillLabelToRating("Senior"), 4);
+  assert.equal(skillLabelToRating("Expert"), 5);
+  assert.equal(skillLabelToRating("Intermediate (Frontend)"), 3);
+  assert.equal(skillLabelToRating("Data Analysis"), null);
+  assert.equal(skillLabelToRating(""), null);
 });
 
 test("changeable fields allowlist excludes identity fields", () => {
