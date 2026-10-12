@@ -9,13 +9,21 @@ import { config as dotenv } from "dotenv";
 // Full name, Email, Zedu username (ID), Email used to join the Zedu workspace,
 // Telegram User name, Github url, Technical Skill (Pre AI era)
 // Usage: tsx scripts/import-roster.ts ./roster.csv [--org zedu-neo]
-// Rows are stamped with the target org (default zedu-egret) so onboarding
-// claims land each member in the right org (010+ tenancy).
+// Each org's rows go to that org's own roster table (015; default zedu-egret
+// → public.roster) and are stamped with the target org (010+ tenancy).
 import { createClient } from "@supabase/supabase-js";
 
-// Mirrors DEFAULT_ORG_SLUG in lib/org.ts (not imported: that module is
+// Mirror of DEFAULT_ORG_SLUG in lib/org.ts (not imported: that module is
 // server-only). Keep the two in sync.
 const DEFAULT_ORG_SLUG = "zedu-egret";
+
+// Mirror of ROSTER_TABLE_BY_SLUG in lib/roster.ts (the script stays
+// dependency-light). Each org keeps its own registration list (015), so the
+// same person can appear on several orgs' rosters. Keep the two maps in sync.
+const ROSTER_TABLE_BY_SLUG: Record<string, string> = {
+  "zedu-egret": "roster",
+  "zedu-neo": "roster_neo",
+};
 
 function parseCsv(text: string): string[][] {
   const rows: string[][] = [];
@@ -67,6 +75,11 @@ async function main() {
     .maybeSingle();
   if (orgErr) throw orgErr;
   if (!org) throw new Error(`Org "${orgSlug}" not found — run migration 013 (seeds zedu-neo) or create the org first.`);
+  const rosterTable = ROSTER_TABLE_BY_SLUG[orgSlug];
+  if (!rosterTable)
+    throw new Error(
+      `No roster table configured for org "${orgSlug}" — create one (see 015_roster_neo.sql), then register it in scripts/import-roster.ts and lib/roster.ts.`
+    );
 
   let ok = 0, skipped = 0;
   for (let i = 1; i < rows.length; i++) {
@@ -74,7 +87,7 @@ async function main() {
     const email = (r[idx.email] || "").trim();
     const zedu_id = (r[idx.zid] || "").trim();
     if (!email || !zedu_id) { skipped++; continue; }
-    const { error } = await sb.from("roster").upsert({
+    const { error } = await sb.from(rosterTable).upsert({
       full_name: (r[idx.name] || "").trim() || email,
       email,
       zedu_id,
@@ -87,7 +100,7 @@ async function main() {
     if (error) { console.error(`row ${i}: ${error.message}`); skipped++; }
     else ok++;
   }
-  console.log(`Roster import done (${orgSlug}): ${ok} upserted, ${skipped} skipped`);
+  console.log(`Roster import done (${orgSlug} → ${rosterTable}): ${ok} upserted, ${skipped} skipped`);
 }
 
 main().catch((e) => { console.error(e); process.exit(1); });
