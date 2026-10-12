@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { authUser, isAdminUser, serviceClient } from "@/lib/api-auth";
+import { adminContext, orgMemberIds } from "@/lib/admin-org";
+import { serviceClient } from "@/lib/api-auth";
 import { CHANGE_FIELD_COLUMN, isChangeableField, type ChangeableField } from "@/lib/validation";
 
 // PATCH /api/admin/change-requests — decide a pending profile change.
@@ -8,12 +9,9 @@ import { CHANGE_FIELD_COLUMN, isChangeableField, type ChangeableField } from "@/
 // the status flip is conditional on still-pending so two admins can never
 // double-decide, and a failed profile write rolls the flip back.
 export async function PATCH(request: Request) {
+  const ac = await adminContext(request);
+  if (!ac.ok) return ac.denied;
   try {
-    const user = await authUser(request);
-    if (!user) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
-    if (!(await isAdminUser(user.id)))
-      return NextResponse.json({ error: "Admin access required" }, { status: 403 });
-
     const body = await request.json();
     const id = String(body?.id || "");
     const action = String(body?.action || "");
@@ -24,6 +22,9 @@ export async function PATCH(request: Request) {
     const svc = serviceClient();
     const { data: row } = await svc.from("change_requests").select("*").eq("id", id).maybeSingle();
     if (!row) return NextResponse.json({ error: "Request not found" }, { status: 404 });
+    const members = new Set(await orgMemberIds(svc, ac.ctx.orgId));
+    if (!members.has(row.user_id))
+      return NextResponse.json({ error: "Request not found in this org" }, { status: 404 });
     if (row.status !== "pending")
       return NextResponse.json({ error: `Already decided (${row.status})` }, { status: 409 });
 

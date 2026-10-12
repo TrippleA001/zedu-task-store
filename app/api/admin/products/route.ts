@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { authUser, isAdminUser, serviceClient } from "@/lib/api-auth";
-import { activeOrgId } from "@/lib/org";
+import { adminContext } from "@/lib/admin-org";
+import { serviceClient } from "@/lib/api-auth";
 import { attemptsPolicyError, prereqStagesError } from "@/lib/policy";
 import { sanitizeText, submissionSchemaError } from "@/lib/validation";
 
@@ -62,18 +62,10 @@ function fieldErrors(body: Record<string, unknown>, { creating }: { creating: bo
   return null;
 }
 
-async function guard(request: Request) {
-  const user = await authUser(request);
-  if (!user) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
-  if (!(await isAdminUser(user.id)))
-    return NextResponse.json({ error: "Admin access required" }, { status: 403 });
-  return null;
-}
-
-// POST /api/admin/products — create a task product.
+// POST /api/admin/products — create a task product in the viewing org.
 export async function POST(request: Request) {
-  const denied = await guard(request);
-  if (denied) return denied;
+  const ac = await adminContext(request);
+  if (!ac.ok) return ac.denied;
   try {
     const body = await request.json();
     if (body?.stage_number === undefined) return NextResponse.json({ error: "stage_number is required" }, { status: 400 });
@@ -86,7 +78,6 @@ export async function POST(request: Request) {
     if (selfErr) return NextResponse.json({ error: selfErr }, { status: 422 });
 
     const svc = serviceClient();
-    const viewer = await authUser(request);
     const { data, error } = await svc
       .from("products")
       .insert({
@@ -100,7 +91,7 @@ export async function POST(request: Request) {
         submission_schema: cleanSchema(body.submission_schema ?? []),
         prereq_stages: prereqRaw === "" ? null : prereqRaw,
         attempts_policy: String(body.attempts_policy || "single"),
-        org_id: await activeOrgId(viewer?.id, svc),
+        org_id: ac.ctx.orgId,
       })
       .select("*")
       .single();
@@ -118,8 +109,8 @@ export async function POST(request: Request) {
 // PATCH /api/admin/products — update an existing product by id. Partial:
 // only the fields present in the body are changed.
 export async function PATCH(request: Request) {
-  const denied = await guard(request);
-  if (denied) return denied;
+  const ac = await adminContext(request);
+  if (!ac.ok) return ac.denied;
   try {
     const body = await request.json();
     const id = String(body?.id || "");
@@ -153,6 +144,7 @@ export async function PATCH(request: Request) {
         .from("products")
         .select("stage_number, prereq_stages")
         .eq("id", id)
+        .eq("org_id", ac.ctx.orgId)
         .maybeSingle();
       if (pErr) throw pErr;
       if (!product) return NextResponse.json({ error: "Product not found" }, { status: 404 });
@@ -163,7 +155,13 @@ export async function PATCH(request: Request) {
       if (selfErr) return NextResponse.json({ error: selfErr }, { status: 422 });
     }
 
-    const { data, error } = await svc.from("products").update(patch).eq("id", id).select("*").maybeSingle();
+    const { data, error } = await svc
+      .from("products")
+      .update(patch)
+      .eq("id", id)
+      .eq("org_id", ac.ctx.orgId)
+      .select("*")
+      .maybeSingle();
     if (error) {
       if (String(error.message).includes("duplicate"))
         return NextResponse.json({ error: `Task ${Number(body.stage_number)} already exists` }, { status: 409 });
@@ -180,8 +178,8 @@ export async function PATCH(request: Request) {
 // Any order, submission, or cart row referencing it blocks deletion (409) so
 // purchased or earned values are never lost.
 export async function DELETE(request: Request) {
-  const denied = await guard(request);
-  if (denied) return denied;
+  const ac = await adminContext(request);
+  if (!ac.ok) return ac.denied;
   try {
     const body = await request.json();
     const id = String(body?.id || "");
@@ -192,6 +190,7 @@ export async function DELETE(request: Request) {
       .from("products")
       .select("id, stage_number")
       .eq("id", id)
+      .eq("org_id", ac.ctx.orgId)
       .maybeSingle();
     if (pErr) throw pErr;
     if (!product) return NextResponse.json({ error: "Product not found" }, { status: 404 });
@@ -212,7 +211,7 @@ export async function DELETE(request: Request) {
         { status: 409 }
       );
 
-    const { error } = await svc.from("products").delete().eq("id", id);
+    const { error } = await svc.from("products").delete().eq("id", id).eq("org_id", ac.ctx.orgId);
     if (error) throw error;
     return NextResponse.json({ ok: true });
   } catch (e: any) {
