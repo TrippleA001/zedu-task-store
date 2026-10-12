@@ -1,5 +1,6 @@
 "use client";
 import StepTwo from "./step-two";
+import ConfirmCard, { type ConfirmPrefill } from "./confirm-card";
 import { useEffect, useState } from "react";
 
 import { useRouter } from "next/navigation";
@@ -23,6 +24,8 @@ export default function OnboardingPage() {
   const [msg, setMsg] = useState<{ kind: string; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [prefill, setPrefill] = useState({ full_name: "", github_url: "" });
+  const [confirm, setConfirm] = useState<ConfirmPrefill | null>(null);
+  const [ready, setReady] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -39,6 +42,19 @@ export default function OnboardingPage() {
         setOrgs(orgList);
         setOrgId((prev) => prev || orgList[0].id);
       }
+      // Imported members skip the wizard: their roster row already carries
+      // the profile details, so a successful lookup shows the confirm card.
+      // Anything else (404/409/error) falls through to the wizard below.
+      try {
+        const r = await fetch("/api/onboarding/confirm");
+        if (r.ok) {
+          const j = await r.json();
+          if (j.prefill) setConfirm(j.prefill as ConfirmPrefill);
+        }
+      } catch {
+        // wizard fallback
+      }
+      setReady(true);
     })();
   }, [router]);
 
@@ -62,7 +78,7 @@ export default function OnboardingPage() {
     try {
       const r = await fetch("/api/onboarding/verify", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ workspace_email: workspaceEmail, zedu_id: zeduId }),
+        body: JSON.stringify({ workspace_email: workspaceEmail, zedu_id: zeduId, org_id: orgId }),
       });
       const j = await r.json();
       if (!r.ok) throw new Error(j.error || "Verification failed");
@@ -78,13 +94,21 @@ export default function OnboardingPage() {
       <p className="text-xs font-semibold uppercase tracking-widest text-brand">Intern onboarding</p>
       <h1 className="mt-1 text-2xl font-bold tracking-tight text-ink sm:text-3xl">Set up your store account</h1>
       <div className="mt-4 rounded-lg border border-line bg-canvas px-4 py-3 text-sm text-muted">
-        Signed in as <span className="font-semibold text-ink">{authEmail || "..."}</span> with Google. Now find the email address you registered with below — it may be different from your Google login.
+        Signed in as <span className="font-semibold text-ink">{authEmail || "..."}</span> with Google.
+        {ready && !confirm && " Now find the email address you registered with below — it may be different from your Google login."}
       </div>
-      <div className="mt-6">
-        <Stepper steps={["Identity", "Profile & channels", "Technical level"]} current={step} />
-      </div>
-      <div className="mt-6">{msg && <Alert kind={msg.kind as "error" | "success"}>{msg.text}</Alert>}</div>
-      {step === 1 && (
+      {ready && confirm && (
+        <div className="mt-6">
+          <ConfirmCard prefill={confirm} />
+        </div>
+      )}
+      {ready && !confirm && (
+        <div className="mt-6">
+          <Stepper steps={["Identity", "Profile & channels", "Technical level"]} current={step} />
+        </div>
+      )}
+      {ready && !confirm && <div className="mt-6">{msg && <Alert kind={msg.kind as "error" | "success"}>{msg.text}</Alert>}</div>}
+      {ready && !confirm && step === 1 && (
         <div className="mt-4 rounded-xl border border-line bg-white p-6 shadow-sm sm:p-8">
           <h2 className="text-lg font-bold text-ink">Find your registration</h2>
           <p className="mt-1 text-sm text-muted">Pick your organization, find your registration email, then confirm it with your Zedu ID.</p>
@@ -151,11 +175,12 @@ export default function OnboardingPage() {
           </div>
         </div>
       )}
-      {step === 2 && (
+      {ready && !confirm && step === 2 && (
         <StepTwo
           prefill={prefill}
           workspaceEmail={workspaceEmail}
           zeduId={zeduId}
+          orgId={orgId}
           onBack={() => setStep(1)}
         />
       )}

@@ -109,14 +109,17 @@ GET → `{ items: [{ id, kind, title, body, order_number, read_at, created_at }]
 PATCH `{ ids?: string[] }` → `{ ok: true }` (omitted = mark all read).
 
 ### `POST /api/onboarding/verify` — no auth
-Body `{ workspace_email, zedu_id }` → `{ ok: true, prefill }` or
-400/404/409/403 with display-ready `error`.
+Body `{ workspace_email, zedu_id, org_id? }` → `{ ok: true, prefill }` or
+400/404/409/403 with display-ready `error`. `org_id` selects the org whose
+registration list is checked (each org keeps its own list); omit it for the
+default org.
 
 ### `POST /api/onboarding/complete` — Bearer auth
-Body `{ workspace_email, zedu_id, full_name, github_url, telegram_handle, skill_rating (1-5), channels: [4 required keys] }` → `{ ok: true }` or 400/403/404/409.
+Body `{ workspace_email, zedu_id, org_id?, full_name, github_url, telegram_handle, skill_rating (1-5), channels: [4 required keys] }` → `{ ok: true }` or 400/403/404/409. Pass the same `org_id` as verify.
 
-### `GET /api/roster/emails?q=&limit=` — no auth
-`{ items: [{ email, hint }] }` for the Step-1 dropdown.
+### `GET /api/roster/emails?q=&org_id=&limit=` — no auth
+`{ items: [{ email, hint }] }` for the Step-1 dropdown. `org_id` picks the
+registration list; omitted = all lists merged.
 
 ### `POST /api/change-requests` — Bearer auth (Phase 2)
 Request a profile edit for admin review — the app never edits `users`

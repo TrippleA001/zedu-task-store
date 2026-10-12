@@ -3,7 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 import { supabaseNoStore } from "@/lib/supabase-server";
 import { authUser } from "@/lib/api-auth";
 import { defaultOrgId } from "@/lib/org";
-import { resolveRosterIdentity } from "@/lib/roster";
+import { resolveRosterIdentity, rosterTableForOrgId } from "@/lib/roster";
 import {
   normalizeTelegram,
   normalizeZeduId,
@@ -22,6 +22,7 @@ export async function POST(request: Request) {
     const body = await request.json();
     const workspace_email = String(body?.workspace_email || "");
     const zedu_id = normalizeZeduId(String(body?.zedu_id || ""));
+    const orgSelection = String(body?.org_id || "").trim();
     const full_name = sanitizeText(String(body?.full_name || ""));
     const github_url = sanitizeText(String(body?.github_url || ""), 500);
     const telegram = normalizeTelegram(String(body?.telegram_handle || ""));
@@ -48,15 +49,19 @@ export async function POST(request: Request) {
     const { data: existing } = await svc.from("users").select("id").eq("id", user.id).maybeSingle();
     if (existing) return NextResponse.json({ error: "Already onboarded" }, { status: 409 });
 
-    // Verify pair (accepts the masked dropdown form) and resolve the real row
-    const resolved = await resolveRosterIdentity(svc, workspace_email, zedu_id);
+    // Verify pair (accepts the masked dropdown form) against the selected
+    // org's registration list (015) and resolve the real row
+    const table = orgSelection ? await rosterTableForOrgId(svc, orgSelection) : "roster";
+    if (!table)
+      return NextResponse.json({ error: "That organization has no registration list yet." }, { status: 400 });
+    const resolved = await resolveRosterIdentity(svc, workspace_email, zedu_id, table);
     if ("error" in resolved)
       return NextResponse.json({ error: resolved.error }, { status: resolved.status });
     const row = resolved.row;
 
     // Atomic claim (fails if raced)
     const { data: claimed, error: cErr } = await svc
-      .from("roster")
+      .from(table)
       .update({ claimed_by: user.id, claimed_at: new Date().toISOString() })
       .eq("email", row.email)
       .is("claimed_by", null)
@@ -84,7 +89,7 @@ export async function POST(request: Request) {
     });
     if (uErr) {
       // Roll back claim so the email stays claimable
-      await svc.from("roster").update({ claimed_by: null, claimed_at: null }).eq("email", row.email);
+      await svc.from(table).update({ claimed_by: null, claimed_at: null }).eq("email", row.email);
       // Surface duplicate nicely
       if (String(uErr.message).includes("duplicate"))
         return NextResponse.json({ error: "This identity is already registered" }, { status: 409 });

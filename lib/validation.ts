@@ -28,6 +28,35 @@ export function telegramError(raw: string): string | null {
   return null;
 }
 
+// Map the free-text skill labels collected at registration onto the 1-5
+// rating the store uses. Used by the confirm-onboarding screen to prefill
+// the skill radios from a roster row's skill_label. Unknown labels return
+// null — the member picks their rating manually.
+export function skillLabelToRating(raw: string): number | null {
+  const key = raw.trim().toLowerCase().replace(/[\s_-]+/g, " ");
+  if (!key) return null;
+  const exact: Record<string, number> = {
+    beginner: 1,
+    novice: 1,
+    "advanced beginner": 2,
+    "advanced beginer": 2,
+    junior: 2,
+    intermediate: 3,
+    "mid level": 3,
+    advanced: 4,
+    "advanced intermediate": 4,
+    senior: 4,
+    expert: 5,
+    master: 5,
+  };
+  if (key in exact) return exact[key];
+  // Ordered longest-first so "advanced beginner" wins over "advanced".
+  for (const label of Object.keys(exact).sort((a, b) => b.length - a.length)) {
+    if (key.startsWith(label)) return exact[label];
+  }
+  return null;
+}
+
 export function isHttpsUrl(u: string) {
   try {
     const x = new URL(u);

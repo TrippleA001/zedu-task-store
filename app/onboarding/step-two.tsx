@@ -12,9 +12,9 @@ const CHANNEL_TILE: Record<string, string> = {
   zedu_egret: "Z",
 };
 
-export default function StepTwo({ prefill, workspaceEmail, zeduId, onBack }: {
+export default function StepTwo({ prefill, workspaceEmail, zeduId, orgId, onBack }: {
   prefill: { full_name: string; github_url: string };
-  workspaceEmail: string; zeduId: string; onBack: () => void;
+  workspaceEmail: string; zeduId: string; orgId: string; onBack: () => void;
 }) {
   const router = useRouter();
   const [fullName, setFullName] = useState(prefill.full_name);
@@ -42,7 +42,7 @@ export default function StepTwo({ prefill, workspaceEmail, zeduId, onBack }: {
       const r = await fetch("/api/onboarding/complete", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          workspace_email: workspaceEmail, zedu_id: zeduId,
+          workspace_email: workspaceEmail, zedu_id: zeduId, org_id: orgId,
           full_name: fullName, github_url: githubUrl,
           telegram_handle: telegram, skill_rating: skill, channels,
         }),

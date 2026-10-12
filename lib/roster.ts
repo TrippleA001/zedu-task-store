@@ -43,10 +43,12 @@ export async function rosterTableForOrgId(svc: SupabaseClient, orgId: string): P
 // Resolve a registration email (full, or the abcd***@domain mask the
 // onboarding dropdown shows) + Zedu ID pair to exactly one unclaimed roster
 // row. Masked input can match several rows; the Zedu ID picks the right one.
+// `table` is the selected org's registration list (rosterTableForSlug).
 export async function resolveRosterIdentity(
   svc: SupabaseClient,
   rawEmail: string,
-  zid: string
+  zid: string,
+  table: string
 ): Promise<ResolvedRoster> {
   const zidNorm = normalizeZeduId(zid);
   let rows: RosterRow[];
@@ -55,12 +57,12 @@ export async function resolveRosterIdentity(
     const pattern = maskedEmailLike(rawEmail);
     if (!pattern)
       return { error: "Pick your registration email from the suggestions below the input.", status: 400 };
-    const { data, error } = await svc.from("roster").select(COLUMNS).ilike("email", pattern);
+    const { data, error } = await svc.from(table).select(COLUMNS).ilike("email", pattern);
     if (error) throw error;
     rows = (data || []) as RosterRow[];
   } else {
     const { data, error } = await svc
-      .from("roster")
+      .from(table)
       .select(COLUMNS)
       .eq("email", normalizeEmail(rawEmail))
       .maybeSingle();
