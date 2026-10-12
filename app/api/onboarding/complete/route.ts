@@ -61,7 +61,7 @@ export async function POST(request: Request) {
 
     // Atomic claim (fails if raced)
     const { data: claimed, error: cErr } = await svc
-      .from("roster")
+      .from(table)
       .update({ claimed_by: user.id, claimed_at: new Date().toISOString() })
       .eq("email", row.email)
       .is("claimed_by", null)
@@ -89,7 +89,7 @@ export async function POST(request: Request) {
     });
     if (uErr) {
       // Roll back claim so the email stays claimable
-      await svc.from("roster").update({ claimed_by: null, claimed_at: null }).eq("email", row.email);
+      await svc.from(table).update({ claimed_by: null, claimed_at: null }).eq("email", row.email);
       // Surface duplicate nicely
       if (String(uErr.message).includes("duplicate"))
         return NextResponse.json({ error: "This identity is already registered" }, { status: 409 });
