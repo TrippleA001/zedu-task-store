@@ -19,6 +19,27 @@ export type ResolvedRoster = { row: RosterRow } | { error: string; status: numbe
 
 const COLUMNS = "email, zedu_id, full_name, github_url, claimed_by, org_id";
 
+// Each org keeps its own registration list (015 adds roster_neo; Egret keeps
+// the original public.roster), so the same person can appear on several
+// orgs' rosters independently. Mirrored in scripts/import-roster.ts —
+// the script stays dependency-light, keep the two maps in sync.
+export const ROSTER_TABLE_BY_SLUG: Record<string, string> = {
+  "zedu-egret": "roster",
+  "zedu-neo": "roster_neo",
+};
+
+/** Roster table for an org slug; null when the org has no registration list. */
+export function rosterTableForSlug(slug: string | null | undefined): string | null {
+  return (slug && ROSTER_TABLE_BY_SLUG[slug]) || null;
+}
+
+/** Roster table for an organizations.id; null when unknown / unmapped. */
+export async function rosterTableForOrgId(svc: SupabaseClient, orgId: string): Promise<string | null> {
+  const { data, error } = await svc.from("organizations").select("slug").eq("id", orgId).maybeSingle();
+  if (error) throw error;
+  return rosterTableForSlug(data?.slug);
+}
+
 // Resolve a registration email (full, or the abcd***@domain mask the
 // onboarding dropdown shows) + Zedu ID pair to exactly one unclaimed roster
 // row. Masked input can match several rows; the Zedu ID picks the right one.
