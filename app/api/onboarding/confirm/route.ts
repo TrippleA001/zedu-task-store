@@ -3,6 +3,7 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { supabaseNoStore } from "@/lib/supabase-server";
 import { authUser } from "@/lib/api-auth";
 import { defaultOrgId } from "@/lib/org";
+import { ROSTER_TABLE_BY_SLUG } from "@/lib/roster";
 import {
   maskEmail,
   normalizeTelegram,
@@ -17,7 +18,9 @@ import {
 //                        they confirm instead of retyping the wizard.
 // POST /api/onboarding/confirm — atomically claim that roster row + create
 //                        the users row from the (possibly edited) values.
-// Clients without an eligible row get 404 and fall back to the wizard.
+// Every org keeps its own registration list (015), so the auth email is
+// checked against each list: exactly one eligible match wins. No match, or a
+// dual-roster match, falls back to the wizard (which asks for the org first).
 
 const COLUMNS =
   "email, zedu_id, full_name, github_url, telegram_handle, skill_label, claimed_by, org_id";
@@ -33,11 +36,11 @@ type RosterPreview = {
 };
 
 // The auth email can match a roster row's login email or its
-// workspace-join email. More than one unclaimed match is ambiguous —
-// the wizard path disambiguates with the Zedu ID, so we bail out here.
-async function findClaimable(svc: SupabaseClient, email: string): Promise<RosterPreview[]> {
+// workspace-join email. More than one unclaimed match in one list is
+// ambiguous — the wizard path disambiguates with the Zedu ID, so we bail out.
+async function findClaimable(svc: SupabaseClient, email: string, table: string): Promise<RosterPreview[]> {
   const { data: byEmail, error: e1 } = await svc
-    .from("roster")
+    .from(table)
     .select(COLUMNS)
     .eq("email", email)
     .is("claimed_by", null);
@@ -45,7 +48,7 @@ async function findClaimable(svc: SupabaseClient, email: string): Promise<Roster
   if (byEmail && byEmail.length > 0) return byEmail as RosterPreview[];
 
   const { data: byJoin, error: e2 } = await svc
-    .from("roster")
+    .from(table)
     .select(COLUMNS)
     .eq("workspace_join_email", email)
     .is("claimed_by", null);
@@ -55,6 +58,26 @@ async function findClaimable(svc: SupabaseClient, email: string): Promise<Roster
 
 function isEligible(rows: RosterPreview[]): rows is [RosterPreview] {
   return rows.length === 1 && !!rows[0].telegram_handle && !!rows[0].github_url;
+}
+
+// Eligible single matches across every org's list. Exactly one candidate →
+// confirm; zero or several (dual-roster members) → wizard.
+async function findCandidates(
+  svc: SupabaseClient,
+  email: string
+): Promise<{ row: RosterPreview; table: string }[]> {
+  const found: { row: RosterPreview; table: string }[] = [];
+  for (const table of Object.values(ROSTER_TABLE_BY_SLUG)) {
+    const rows = await findClaimable(svc, email, table);
+    if (isEligible(rows)) found.push({ row: rows[0], table });
+  }
+  return found;
+}
+
+async function organizationName(svc: SupabaseClient, orgId: string | null): Promise<string | null> {
+  if (!orgId) return null;
+  const { data } = await svc.from("organizations").select("name").eq("id", orgId).maybeSingle();
+  return data?.name ?? null;
 }
 
 function serviceClient() {
@@ -75,14 +98,14 @@ export async function GET(request: Request) {
     const { data: existing } = await svc.from("users").select("id").eq("id", user.id).maybeSingle();
     if (existing) return NextResponse.json({ error: "Already onboarded" }, { status: 409 });
 
-    const rows = await findClaimable(svc, user.email.toLowerCase());
-    if (!isEligible(rows))
+    const candidates = await findCandidates(svc, user.email.toLowerCase());
+    if (candidates.length !== 1)
       return NextResponse.json(
         { error: "No pre-filled profile for this account — use the full onboarding." },
         { status: 404 }
       );
 
-    const row = rows[0];
+    const { row } = candidates[0];
     return NextResponse.json({
       prefill: {
         email: maskEmail(row.email),
@@ -92,6 +115,7 @@ export async function GET(request: Request) {
         telegram_handle: row.telegram_handle || "",
         skill_label: row.skill_label || "",
         suggested_rating: skillLabelToRating(row.skill_label || ""),
+        org_name: await organizationName(svc, row.org_id),
       },
     });
   } catch (e: any) {
@@ -120,13 +144,13 @@ export async function POST(request: Request) {
     const { data: existing } = await svc.from("users").select("id").eq("id", user.id).maybeSingle();
     if (existing) return NextResponse.json({ error: "Already onboarded" }, { status: 409 });
 
-    const rows = await findClaimable(svc, user.email.toLowerCase());
-    if (!isEligible(rows))
+    const candidates = await findCandidates(svc, user.email.toLowerCase());
+    if (candidates.length !== 1)
       return NextResponse.json(
         { error: "No pre-filled profile for this account — use the full onboarding." },
         { status: 404 }
       );
-    const row = rows[0];
+    const { row, table } = candidates[0];
 
     // Editing the skill radios wins; otherwise fall back to the label the
     // registration list carried. Neither → member must pick one.
@@ -141,7 +165,7 @@ export async function POST(request: Request) {
 
     // Atomic claim (fails if raced)
     const { data: claimed, error: cErr } = await svc
-      .from("roster")
+      .from(table)
       .update({ claimed_by: user.id, claimed_at: new Date().toISOString() })
       .eq("email", row.email)
       .is("claimed_by", null)
@@ -170,7 +194,7 @@ export async function POST(request: Request) {
     });
     if (uErr) {
       // Roll back claim so the email stays claimable
-      await svc.from("roster").update({ claimed_by: null, claimed_at: null }).eq("email", row.email);
+      await svc.from(table).update({ claimed_by: null, claimed_at: null }).eq("email", row.email);
       // Surface duplicate nicely
       if (String(uErr.message).includes("duplicate"))
         return NextResponse.json({ error: "This identity is already registered" }, { status: 409 });

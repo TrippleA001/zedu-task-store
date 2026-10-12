@@ -12,6 +12,7 @@ export type ConfirmPrefill = {
   telegram_handle: string;
   skill_label: string;
   suggested_rating: number | null;
+  org_name: string | null;
 };
 
 // Pre-filled confirm screen for members whose roster row already carries
@@ -52,8 +53,8 @@ export default function ConfirmCard({ prefill }: { prefill: ConfirmPrefill }) {
     <div className="mt-4 rounded-xl border border-line bg-white p-6 shadow-sm sm:p-8">
       <h2 className="text-lg font-bold text-ink">Confirm your profile</h2>
       <p className="mt-1 text-sm text-muted">
-        You&apos;re already registered — your details from the registration list are filled in below.
-        Check them and make changes if necessary, then finish.
+        You&apos;re already registered{prefill.org_name ? <> with <span className="font-semibold text-ink">{prefill.org_name}</span></> : ""} — your details
+        from the registration list are filled in below. Check them and make changes if necessary, then finish.
       </p>
       {msg && <div className="mt-4"><Alert kind="error">{msg}</Alert></div>}
       <div className="mt-5 grid gap-5 sm:grid-cols-2">
